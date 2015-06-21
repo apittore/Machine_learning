@@ -1,0 +1,156 @@
+---
+title: "Machine Learning - Project"
+author: "Alessandro"
+date: "Sunday, June 21, 2015"
+output:
+  pdf_document: default
+  html_document:
+    keep_md: yes
+---
+
+###Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset). 
+
+
+
+###Data 
+
+
+The training data for this project are available here: 
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here: 
+
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+###Method
+The  variable is classe. For this data set, "participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in 5 different fashions: - exactly according to the specification (Class A) - throwing the elbows to the front (Class B) - lifting the dumbbell only halfway (Class C) - lowering the dumbbell only halfway (Class D) - throwing the hips to the front (Class E)
+
+Two models will be tested using decision tree and random forest. The model with the highest accuracy will be chosen as our final model.
+
+
+```{r}
+library(ggplot2)
+library(caret)
+library(parallel)
+library(doParallel)
+library(rpart)
+library(rpart.plot)
+library(data.table)
+library(class)
+library(randomForest)
+library(tm)
+
+#load training dataset into memory
+
+data_set_training<- read.csv("pml-training.csv")
+#load testing dataset into memory
+data_set_testing<- read.csv("pml-testing.csv")
+#select the colums present in both training and testing dataset
+names(data_set_training)
+names(data_set_testing)
+
+data_set_training <- data_set_training[c("user_name", "new_window", "num_window", "roll_belt", "pitch_belt", "yaw_belt",        
+                     "total_accel_belt", "gyros_belt_x", "gyros_belt_y", "gyros_belt_z", "accel_belt_x",   
+                     "accel_belt_y", "accel_belt_z", "magnet_belt_x", "magnet_belt_y", "magnet_belt_z",    
+                     "roll_arm", "pitch_arm", "yaw_arm", "total_accel_arm", "gyros_arm_x", "gyros_arm_y",  
+                     "gyros_arm_z", "accel_arm_x", "accel_arm_y", "accel_arm_z", "magnet_arm_x",   
+                     "magnet_arm_y", "magnet_arm_z", "roll_dumbbell", "pitch_dumbbell", "yaw_dumbbell",
+                     "total_accel_dumbbell", "gyros_dumbbell_x", "gyros_dumbbell_y", "gyros_dumbbell_z",   
+                     "accel_dumbbell_x", "accel_dumbbell_y", "accel_dumbbell_z", "magnet_dumbbell_x",  
+                     "magnet_dumbbell_y", "magnet_dumbbell_z", "roll_forearm", "pitch_forearm", "yaw_forearm",
+                     "total_accel_forearm", "gyros_forearm_x", "gyros_forearm_y", "gyros_forearm_z", "accel_forearm_x",    
+                     "accel_forearm_y", "accel_forearm_z", "magnet_forearm_x", "magnet_forearm_y", "magnet_forearm_z", "classe")]
+
+```
+
+
+
+
+
+Before to start with the machine learning analisys i work on training dataset in order to evaluate the how the dataset in make and the value of "classe" variable and the percentage of split 
+
+```{r}
+str(data_set_testing)
+summary(data_set_training$classe)
+#Dimension of row
+dim(data_set_training)
+
+table(data_set_training$classe)
+#convert into factor
+data_set_training$classe<-factor(data_set_training$classe,levels=c("A","B","C","D","E"),labels=c("A","B","C","D","E"))
+
+#percentage of split into classe variable
+round(prop.table(table(data_set_training$classe))*100,digits=1)
+
+```
+
+###Random Partitioning dataset Training 
+
+#Cross-validation
+
+Cross-validation will be performed by subsampling our training data set randomly without replacement into 2 subsamples: training data (75% of the original Training data set) and other Training. the most accurate model is choosen.
+
+
+```{r}
+#Set Random Seed with 19622 random value
+set.seed(4905)
+##Create a random partitioning using the caret package
+inTrain = createDataPartition(data_set_training$classe, p = 3/4)[[1]]
+## create a training dataset with 75% random data from the original dataset to build a suitable model
+training <- data_set_training[inTrain,]
+## Create a testing dataset with 25% random data from the original dataset to test the model
+testing <- data_set_training[-inTrain,]
+
+
+```
+
+
+
+
+###Tree prediction module
+Evaluate the prediction method tree and test the result with Confusion Matrix
+
+
+```{r}
+#use Rpart to recursive partitioning and regression trees on training set
+class_training<-rpart(classe ~ .,data=training,method="class" )
+#Rpart.plot to plot the decision tree
+rpart.plot(class_training,main="Decision tree",digits=2)
+#use model prediction to predict from the result of rpart and fit the model
+tree_training<-predict(class_training,testing,type="class")
+
+#Use COnfusion matrix to summary of prediction result
+confusionMatrix(tree_training,testing$classe)
+
+
+```
+
+# Random Forest model
+Use another model (Random Forest) to fit the data with this model.BEfore to start for long analisy i enable the cluster of core in order to reduce the time of analisys.
+
+
+
+```{r}
+#analize the core installed and make the cluster
+cl <- makeCluster(detectCores() - 2)
+registerDoParallel(cl, cores = detectCores() - 2)
+
+#Random forest algoritm
+p_training<-randomForest(classe ~ .,data=training)
+#Prediction on testing value
+rf_predict<-predict(p_training,testing,type="class")
+#Result of testing data set
+confusionMatrix(rf_predict,testing$classe)
+
+```
+
+
+###Model fitting
+the Decision Trees is not better that Random Forest. Accuracy for Random Forest model was 0.9992 (95% CI: (0.9979, 0.9998)) compared to Decision Tree model with 0.726 (95% CI: (0.713, 0.738)). The Random Forests model is best to apply. The expected out-of-sample error is estimated at 0.0007
+
+
